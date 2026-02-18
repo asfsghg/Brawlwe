@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
+<title>Tactical Brawl Mobile</title>
+<style>
+    body{ margin:0; overflow:hidden; background:#1a1a1a; font-family:sans-serif; touch-action:none; user-select:none; }
+    canvas{ display:block; background:#2d5a27; }
+    
+    #menu, #matchmaking, #end-screen {
+        position:absolute; top:0; left:0; width:100%; height:100%;
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        background:radial-gradient(circle,#1e3799,#000); color:white; z-index:100; text-align:center;
+    }
+    #matchmaking, #end-screen { display:none; }
+
+    .hero-box { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; padding:10px; }
+    .card { width:100px; padding:10px; background:#2f3542; border:3px solid #57606f; border-radius:12px; cursor:pointer; font-size:12px; }
+    .card:active { border-color:#f1c40f; }
+
+    /* Джойстик и Кнопка */
+    #joy-ui { position:absolute; bottom:30px; left:30px; width:120px; height:120px; background:rgba(255,255,255,0.1); border-radius:50%; display:none; }
+    #joy-stick { position:absolute; top:35px; left:35px; width:50px; height:50px; background:rgba(255,255,255,0.4); border-radius:50%; }
+    #atk-ui { position:absolute; bottom:40px; right:40px; width:90px; height:90px; background:rgba(235,77,75,0.7); border-radius:50%; display:none; border:4px solid white; color:white; font-weight:bold; align-items:center; justify-content:center; }
+
+    #hud { position:absolute; top:10px; left:10px; color:white; font-size:18px; text-shadow:2px 2px #000; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div id="menu">
+    <h1>BRAWL MOBILE</h1>
+    <div class="hero-box" id="hero-list"></div>
+    <p>Выбери бойца</p>
+</div>
+
+<div id="matchmaking">
+    <h2>ПОДБОР ИГРОКОВ...</h2>
+    <div id="mm-count" style="font-size:30px;">0 / 10</div>
+</div>
+
+<div id="end-screen">
+    <h1 id="end-msg"></h1>
+    <button style="padding:15px 30px; font-size:20px; cursor:pointer;" onclick="location.reload()">В МЕНЮ</button>
+</div>
+
+<div id="hud">Бойцов: <span id="alive">10</span> | 🏆 <span id="cur-trophies">0</span></div>
+
+<div id="joy-ui"><div id="joy-stick"></div></div>
+<div id="atk-ui">АТАКА</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let canvasW = window.innerWidth, canvasH = window.innerHeight;
+canvas.width = canvasW; canvas.height = canvasH;
+
+const WORLD_SIZE = 3000;
+const CENTER = WORLD_SIZE / 2;
+
+const HEROES = {
+    "Шелли": { hp: 3800, speed: 2.3, dmg: 350, reload: 1500, color: "#9b59b6", range: 450, type: "spread" },
+    "Кольт": { hp: 2800, speed: 2.5, dmg: 400, reload: 1100, color: "#e74c3c", range: 750, type: "burst" },
+    "Эль Примо": { hp: 6000, speed: 2.1, dmg: 380, reload: 800, color: "#e67e22", range: 200, type: "melee" },
+    "Мортис": { hp: 3800, speed: 2.8, dmg: 1000, reload: 2400, color: "#34495e", range: 250, type: "dash" },
+    "Фрэнк": { hp: 7000, speed: 1.8, dmg: 1200, reload: 2000, color: "#57606f", range: 400, type: "heavy" }
+};
+
+let trophies = JSON.parse(localStorage.getItem("trophies_v2")) || {};
+Object.keys(HEROES).forEach(h => { if(!trophies[h]) trophies[h] = 0; });
+
+let player = { active: false, moveX: 0, moveY: 0 };
+let enemies = [], projectiles = [], cubes = [], walls = [], bushes = [];
+let poisonRadius = WORLD_SIZE * 0.95, lastPoisonTick = 0, selectedHero = null, gameOver = false;
+
+// Мобильное управление
+let joyActive = false, joyOrigin = { x: 0, y: 0 };
+const joyStick = document.getElementById('joy-stick');
+
+function generateMap() {
+    walls = []; bushes = []; cubes = []; projectiles = [];
+    for(let i=0; i<70; i++) walls.push({x:Math.random()*2700+150, y:Math.random()*2700+150, w:Math.random()*100+40, h:Math.random()*100+40});
+    for(let i=0; i<40; i++) bushes.push({x:Math.random()*2700+150, y:Math.random()*2700+150, w:200, h:150});
+    for(let i=0; i<20; i++) cubes.push({x: Math.random()*2800+100, y: Math.random()*2800+100});
+}
+
+function startMM(name) {
+    selectedHero = name;
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('matchmaking').style.display = 'flex';
+    let count = 0;
+    let timer = setInterval(() => {
+        count += Math.floor(Math.random()*3)+1;
+        if(count >= 10) {
+            count = 10; clearInterval(timer);
+            setTimeout(startGame, 500);
+        }
+        document.getElementById('mm-count').innerText = count + " / 10";
+    }, 300);
+}
+
+function startGame() {
+    generateMap();
+    document.getElementById('matchmaking').style.display = 'none';
+    document.getElementById('joy-ui').style.display = 'block';
+    document.getElementById('atk-ui').style.display = 'flex';
+    
+    player = { ...HEROES[selectedHero], id:'p', x: 1500, y: 1500, radius: 25, hp: HEROES[selectedHero].hp, maxHp: HEROES[selectedHero].hp, ammo: 3, lastReload: Date.now(), lastAttacked:0, cubes: 0, active: true, moveX: 0, moveY: 0 };
+    
+    const botNames = ["Leon", "Crow", "Bull", "Spike", "Piper", "Bo", "Darryl", "Bibi", "Tara"];
+    for(let i=0; i<9; i++) {
+        const h = Object.keys(HEROES)[Math.floor(Math.random()*5)];
+        enemies.push({ ...HEROES[h], id:'b'+i, nickname: botNames[i], x: Math.random()*2800+100, y: Math.random()*2800+100, radius: 25, hp: HEROES[h].hp, maxHp: HEROES[h].hp, cubes: 0, ammo: 3, lastReload: Date.now(), lastAttacked:0, nextAttack: 0, angle: Math.random()*Math.PI*2 });
+    }
+    requestAnimationFrame(loop);
+}
+
+// Тач события
+window.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    if(t.clientX < canvasW/2) {
+        joyActive = true; joyOrigin = { x: t.clientX, y: t.clientY };
+        document.getElementById('joy-ui').style.left = (t.clientX - 60) + "px";
+        document.getElementById('joy-ui').style.top = (t.clientY - 60) + "px";
+    }
+});
+window.addEventListener('touchmove', e => {
+    if(!joyActive) return;
+    const t = Array.from(e.touches).find(touch => touch.clientX < canvasW/2);
+    if(t) {
+        let dx = t.clientX - joyOrigin.x, dy = t.clientY - joyOrigin.y;
+        const dist = Math.hypot(dx, dy);
+        if(dist > 50) { dx *= 50/dist; dy *= 50/dist; }
+        joyStick.style.transform = `translate(${dx}px, ${dy}px)`;
+        player.moveX = dx/50; player.moveY = dy/50;
+    }
+});
+window.addEventListener('touchend', () => { joyActive = false; player.moveX = 0; player.moveY = 0; joyStick.style.transform = 'translate(0,0)'; });
+
+document.getElementById('atk-ui').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    let tx = player.x + (player.moveX * 200), ty = player.y + (player.moveY * 200);
+    if(player.moveX === 0 && player.moveY === 0) { tx = player.x + 100; ty = player.y; }
+    fire(player, tx, ty);
+});
+
+function fire(ent, tx, ty) {
+    if(ent.ammo < 1) return;
+    ent.ammo--; ent.lastAttacked = Date.now();
+    const ang = Math.atan2(ty - ent.y, tx - ent.x);
+    const spawn = (a, r, s, d, rad=12) => projectiles.push({ x: ent.x, y: ent.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, range: r, dist: 0, dmg: d + (ent.cubes*50), ownerId: ent.id, rad: rad });
+    
+    if(ent.type === "spread") for(let i=-2; i<=2; i++) spawn(ang + i*0.2, ent.range, 12, ent.dmg);
+    else if(ent.type === "burst") for(let i=0; i<6; i++) setTimeout(() => spawn(ang, ent.range, 16, ent.dmg), i*100);
+    else if(ent.type === "dash") { 
+        let nx = ent.x + Math.cos(ang)*200, ny = ent.y + Math.sin(ang)*200;
+        ent.x = nx; ent.y = ny; spawn(ang, 100, 5, ent.dmg, 60); 
+    }
+    else spawn(ang, ent.range, 10, ent.dmg, ent.type === "heavy" ? 40 : 12);
+}
+
+function update() {
+    if(!player.active || gameOver) return;
+    if(poisonRadius > 100) poisonRadius -= 0.1;
+    
+    // Движение игрока
+    player.x += player.moveX * player.speed;
+    player.y += player.moveY * player.speed;
+
+    const all = [player, ...enemies];
+    all.forEach(e => {
+        if(e.ammo < 3 && Date.now() - e.lastReload > e.reload) { e.ammo++; e.lastReload = Date.now(); }
+        if(Date.now() - e.lastAttacked > 4000 && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + 20);
+        if(Math.hypot(e.x - CENTER, e.y - CENTER) > poisonRadius && Date.now() - lastPoisonTick > 1000) { e.hp -= 500; }
+    });
+    if(Date.now() - lastPoisonTick > 1000) lastPoisonTick = Date.now();
+
+    enemies.forEach((en, i) => {
+        let nearest = null, minDist = 600;
+        all.forEach(other => { if(other.id !== en.id && Math.hypot(en.x-other.x, en.y-other.y) < minDist) { minDist = Math.hypot(en.x-other.x, en.y-other.y); nearest = other; } });
+        if(nearest && Date.now() > en.nextAttack) { fire(en, nearest.x, nearest.y); en.nextAttack = Date.now() + en.reload + 1000; }
+        if(en.hp <= 0) { cubes.push({x:en.x, y:en.y}); enemies.splice(i,1); }
+    });
+
+    projectiles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy; p.dist += Math.hypot(p.vx, p.vy);
+        if(p.dist > p.range) projectiles.splice(i,1);
+        all.forEach(t => { if(p.ownerId !== t.id && Math.hypot(p.x-t.x, p.y-t.y) < t.radius + p.rad) { t.hp -= p.dmg; projectiles.splice(i,1); t.lastAttacked = Date.now(); } });
+    });
+
+    cubes.forEach((c, i) => { all.forEach(e => { if(Math.hypot(e.x-c.x, e.y-c.y) < 40) { e.cubes++; e.hp += 400; e.maxHp += 400; cubes.splice(i,1); } }); });
+
+    document.getElementById('alive').innerText = enemies.length + 1;
+    document.getElementById('cur-trophies').innerText = trophies[selectedHero];
+    if(player.hp <= 0) endGame(false);
+    if(enemies.length === 0) endGame(true);
+}
+
+function endGame(win) {
+    gameOver = true;
+    if(win) trophies[selectedHero] += 8; else trophies[selectedHero] = Math.max(0, trophies[selectedHero]-4);
+    localStorage.setItem("trophies_v2", JSON.stringify(trophies));
+    document.getElementById('end-screen').style.display = 'flex';
+    document.getElementById('end-msg').innerHTML = win ? "ПОБЕДА +8 🏆" : "ПОРАЖЕНИЕ -4 🏆";
+}
+
+function draw() {
+    ctx.clearRect(0,0,canvasW, canvasH);
+    ctx.save(); ctx.translate(-player.x + canvasW/2, -player.y + canvasH/2);
+
+    // Яд
+    ctx.fillStyle = "rgba(155, 89, 182, 0.4)";
+    ctx.beginPath(); ctx.rect(0,0, WORLD_SIZE, WORLD_SIZE); ctx.arc(CENTER, CENTER, poisonRadius, 0, Math.PI*2, true); ctx.fill();
+
+    bushes.forEach(b => { ctx.fillStyle = "#1e4d17"; ctx.fillRect(b.x, b.y, b.w, b.h); });
+    ctx.fillStyle = "#3e2723"; walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+    ctx.fillStyle = "#f1c40f"; cubes.forEach(c => { ctx.beginPath(); ctx.arc(c.x, c.y, 14, 0, Math.PI*2); ctx.fill(); });
+
+    const drawEnt = (e, isP) => {
+        ctx.save();
+        ctx.globalAlpha = bushes.some(b => e.x > b.x && e.x < b.x+b.w && e.y > b.y && e.y < b.y+b.h) ? 0.3 : 1;
+        ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 25, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "black"; ctx.fillRect(e.x-40, e.y-50, 80, 8);
+        ctx.fillStyle = isP ? "#2ecc71" : "#e74c3c"; ctx.fillRect(e.x-40, e.y-50, (e.hp/e.maxHp)*80, 8);
+        ctx.fillStyle = "white"; ctx.font = "12px Arial"; ctx.textAlign="center";
+        ctx.fillText((isP ? "" : e.nickname + " ") + "⚡" + e.cubes, e.x, e.y-55);
+        ctx.restore();
+    };
+    enemies.forEach(en => drawEnt(en, false));
+    drawEnt(player, true);
+    ctx.fillStyle = "yellow"; projectiles.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.rad, 0, Math.PI*2); ctx.fill(); });
+    ctx.restore();
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+// Рендер лобби
+Object.keys(HEROES).forEach(name => {
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.innerHTML = `<b>${name}</b><br>🏆 ${trophies[name]}`;
+    c.onclick = () => startMM(name);
+    document.getElementById('hero-list').appendChild(c);
+});
+</script>
+</body>
+</html>
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        ctx.closePath();
+    });
+}
+
+function animate() {
+    update();
+    draw();
+    requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
