@@ -2,427 +2,275 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none, orientation=landscape">
-<title>Brawl Stars JS Edition</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
+<title>Brawl Stars JS - Fixed First Match</title>
 <style>
-    body { margin:0; overflow:hidden; background:#000; font-family: 'Arial', sans-serif; touch-action:none; user-select:none; }
-    canvas { display:block; }
+    body { margin:0; overflow:hidden; background:#1a1a1a; font-family:sans-serif; touch-action:none; user-select:none; }
+    canvas { display:block; background:#2d5a27; }
     
-    /* Сообщение о повороте экрана */
-    @media screen and (orientation: portrait) {
-        #rotate-notice { display: flex; }
-    }
-    #rotate-notice {
-        display: none; position: fixed; top:0; left:0; width:100%; height:100%;
-        background: #1a1a1a; color: white; z-index: 1000;
-        align-items: center; justify-content: center; text-align: center;
-    }
-
-    #ui-layer { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none; }
-    
-    /* Стили меню */
-    #menu, #matchmaking, #end-screen {
+    #menu, #end-screen {
         position:absolute; top:0; left:0; width:100%; height:100%;
         display:flex; flex-direction:column; align-items:center; justify-content:center;
-        background:radial-gradient(circle,#1e3799,#000); color:white; z-index:500; pointer-events: all;
+        background:radial-gradient(circle,#1e3799,#000); color:white; z-index:1000;
     }
-    
-    .hero-box { display:flex; gap:15px; }
-    .card { 
-        width:120px; padding:15px; background:#2f3542; border:4px solid #57606f; 
-        border-radius:15px; cursor:pointer; text-align: center; transition: 0.2s;
-    }
-    .card:hover { transform: scale(1.1); border-color: #f1c40f; }
-
-    /* HUD */
-    #hud { position:absolute; top:20px; left:20px; color:white; font-size:20px; text-shadow:2px 2px #000; }
+    #end-screen { display:none; }
 
     /* Джойстики */
-    .joystick-base {
-        position: absolute; width: 130px; height: 130px;
+    .joy-container {
+        position: absolute; width: 140px; height: 140px;
         background: rgba(255,255,255,0.1); border-radius: 50%;
         border: 2px solid rgba(255,255,255,0.2); pointer-events: all;
     }
-    .joystick-stick {
-        position: absolute; top: 35px; left: 35px; width: 60px; height: 60px;
-        background: rgba(255,255,255,0.4); border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    .stick {
+        position: absolute; top: 40px; left: 40px; width: 60px; height: 60px;
+        background: rgba(255,255,255,0.4); border-radius: 50%;
     }
     
-    #joy-move { bottom: 40px; left: 40px; }
-    #joy-atk { bottom: 40px; right: 160px; border-color: rgba(235, 77, 75, 0.5); }
-    #joy-ult { bottom: 60px; right: 40px; width: 100px; height: 100px; border-color: #f1c40f; }
-    #joy-ult .joystick-stick { width: 40px; height: 40px; top: 30px; left: 30px; background: rgba(241, 196, 15, 0.6); }
+    #move-container { bottom: 40px; left: 40px; }
+    #atk-container { bottom: 40px; right: 180px; border-color: rgba(235,77,75,0.5); }
+    #ult-container { bottom: 60px; right: 40px; width: 100px; height: 100px; border-color: #f1c40f; opacity: 0.4; }
 
-    #ult-progress {
-        position: absolute; width: 100%; height: 100%; border-radius: 50%;
-        border: 4px solid transparent; border-top-color: #f1c40f;
-        transform: rotate(-45deg); display: none;
-    }
+    #hud { position:absolute; top:10px; left:10px; color:white; font-size:18px; text-shadow:2px 2px #000; pointer-events:none; }
+    .hero-btn { padding:15px; background:#2f3542; color:white; border:2px solid #fff; border-radius:10px; cursor:pointer; margin:5px; }
 </style>
 </head>
 <body>
 
-<div id="rotate-notice"><h1>Пожалуйста, переверните устройство в горизонтальный режим</h1></div>
-
 <div id="menu">
     <h1>BRAWL STARS JS</h1>
-    <div class="hero-box" id="hero-list"></div>
+    <div id="hero-list"></div>
 </div>
 
-<div id="matchmaking" style="display:none">
-    <h2>ПОИСК ИГРОКОВ...</h2>
-    <h1 id="mm-count">0 / 10</h1>
+<div id="end-screen">
+    <h1 id="result-msg"></h1>
+    <button class="hero-btn" onclick="location.reload()">В МЕНЮ</button>
 </div>
 
-<div id="end-screen" style="display:none">
-    <h1 id="end-msg"></h1>
-    <button style="padding:15px 40px; font-size:24px;" onclick="location.reload()">В МЕНЮ</button>
+<div id="hud">
+    🏆 <span id="trophies-val">0</span> | 🔋 Ульта: <span id="ult-val">0</span>%
 </div>
 
-<div id="ui-layer">
-    <div id="hud">🏆 <span id="cur-trophies">0</span></div>
-    
-    <div id="joy-move" class="joystick-base"><div class="joystick-stick"></div></div>
-    
-    <div id="joy-atk" class="joystick-base"><div class="joystick-stick"></div></div>
-    
-    <div id="joy-ult" class="joystick-base">
-        <div id="ult-progress"></div>
-        <div class="joystick-stick"></div>
-    </div>
-</div>
+<div id="move-container" class="joy-container"><div class="stick" id="move-stick"></div></div>
+<div id="atk-container" class="joy-container"><div class="stick" id="atk-stick"></div></div>
+<div id="ult-container" class="joy-container"><div class="stick" id="ult-stick"></div></div>
 
 <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+let w = window.innerWidth, h = window.innerHeight;
+canvas.width = w; canvas.height = h;
 
 const HEROES = {
-    "Шелли": { hp: 3800, speed: 2.5, dmg: 400, reload: 1500, color: "#9b59b6", range: 400, ultType: "wide-blast" },
-    "Кольт": { hp: 2800, speed: 2.8, dmg: 350, reload: 1100, color: "#e74c3c", range: 700, ultType: "long-burst" },
-    "Эль Примо": { hp: 6000, speed: 2.3, dmg: 500, reload: 1000, color: "#e67e22", range: 180, ultType: "jump" }
+    "Шелли": { hp: 3800, speed: 2.8, dmg: 400, reload: 1200, color: "#9b59b6", range: 450, ultReady: false },
+    "Кольт": { hp: 2800, speed: 3.2, dmg: 350, reload: 900, color: "#e74c3c", range: 700, ultReady: false },
+    "Эль Примо": { hp: 6000, speed: 2.4, dmg: 450, reload: 800, color: "#e67e22", range: 220, ultReady: false }
 };
 
-let worldW = 3000, worldH = 2000;
-let player, enemies = [], projectiles = [], cubes = [], walls = [];
-let trophies = JSON.parse(localStorage.getItem("brawl_trophies")) || { "Шелли":0, "Кольт":0, "Эль Примо":0 };
-let selectedHero = "Шелли";
-let isRunning = false;
+let trophies = JSON.parse(localStorage.getItem("brawl_t_v3")) || { "Шелли":0, "Кольт":0, "Эль Примо":0 };
+let player, enemies = [], projectiles = [], cubes = [], isPlaying = false;
+let ultCharge = 0;
 
-// Состояние джойстиков
+// Управление
 const input = {
     move: { active: false, x: 0, y: 0, dx: 0, dy: 0 },
     atk: { active: false, x: 0, y: 0, dx: 0, dy: 0, angle: 0 },
-    ult: { active: false, x: 0, y: 0, dx: 0, dy: 0, angle: 0, ready: false, charge: 0 }
+    ult: { active: false, x: 0, y: 0, dx: 0, dy: 0, angle: 0 }
 };
 
-function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resize);
-resize();
-
-/* --- УПРАВЛЕНИЕ --- */
-function setupJoystick(id, type) {
-    const el = document.getElementById(id);
-    const stick = el.querySelector('.joystick-stick');
+function initJoy(id, type) {
+    const el = document.getElementById(id + '-container');
+    const stick = document.getElementById(id + '-stick');
     
-    el.addEventListener('touchstart', (e) => {
+    el.addEventListener('touchstart', e => {
         const t = e.touches[0];
         const rect = el.getBoundingClientRect();
         input[type].active = true;
-        input[type].x = rect.left + rect.width/2;
-        input[type].y = rect.top + rect.height/2;
-        e.preventDefault();
-    }, {passive: false});
+        input[type].originX = rect.left + rect.width/2;
+        input[type].originY = rect.top + rect.height/2;
+    });
 
-    window.addEventListener('touchmove', (e) => {
+    window.addEventListener('touchmove', e => {
         if (!input[type].active) return;
-        let touch = Array.from(e.touches).find(t => {
-            let d = Math.hypot(t.clientX - input[type].x, t.clientY - input[type].y);
-            return d < 200;
+        const t = Array.from(e.touches).find(touch => {
+            const rect = el.getBoundingClientRect();
+            return Math.hypot(touch.clientX - (rect.left+rect.width/2), touch.clientY - (rect.top+rect.height/2)) < 200;
         });
-        if (!touch) return;
+        if (!t) return;
 
-        let dx = touch.clientX - input[type].x;
-        let dy = touch.clientY - input[type].y;
-        let dist = Math.hypot(dx, dy);
-        let max = rect = el.offsetWidth / 2;
+        let dx = t.clientX - input[type].originX;
+        let dy = t.clientY - input[type].originY;
+        const dist = Math.hypot(dx, dy);
+        const max = 50;
 
         if (dist > max) { dx *= max/dist; dy *= max/dist; }
-        
         stick.style.transform = `translate(${dx}px, ${dy}px)`;
-        input[type].dx = dx / max;
-        input[type].dy = dy / max;
+        
+        input[type].dx = dx/max;
+        input[type].dy = dy/max;
         input[type].angle = Math.atan2(dy, dx);
     });
 
-    window.addEventListener('touchend', (e) => {
+    window.addEventListener('touchend', () => {
         if (!input[type].active) return;
+        if (type === 'atk' && Math.hypot(input.atk.dx, input.atk.dy) > 0.3) fire(player, input.atk.angle, false);
+        if (type === 'ult' && ultCharge >= 100 && Math.hypot(input.ult.dx, input.ult.dy) > 0.3) fire(player, input.ult.angle, true);
         
-        // Стрельба при отпускании
-        if (type === 'atk' && Math.hypot(input.atk.dx, input.atk.dy) > 0.3) {
-            fire(player, input.atk.angle, false);
-        } else if (type === 'ult' && input.ult.ready && Math.hypot(input.ult.dx, input.ult.dy) > 0.3) {
-            fire(player, input.ult.angle, true);
-            input.ult.charge = 0;
-            input.ult.ready = false;
-        }
-
         input[type].active = false;
         input[type].dx = 0; input[type].dy = 0;
         stick.style.transform = `translate(0,0)`;
     });
 }
 
-setupJoystick('joy-move', 'move');
-setupJoystick('joy-atk', 'atk');
-setupJoystick('joy-ult', 'ult');
+initJoy('move', 'move');
+initJoy('atk', 'atk');
+initJoy('ult', 'ult');
 
-/* --- ЛОГИКА ИГРЫ --- */
-function startMM(name) {
-    selectedHero = name;
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('matchmaking').style.display = 'flex';
-    let c = 0;
-    let inter = setInterval(() => {
-        c += Math.floor(Math.random()*3);
-        if(c >= 10) { 
-            c=10; clearInterval(inter); 
-            setTimeout(() => {
-                document.getElementById('matchmaking').style.display = 'none';
-                initGame();
-            }, 500);
-        }
-        document.getElementById('mm-count').innerText = c + " / 10";
-    }, 200);
-}
-
-function initGame() {
-    player = {
-        ...HEROES[selectedHero],
-        x: worldW/2, y: worldH/2,
-        hp: HEROES[selectedHero].hp, maxHp: HEROES[selectedHero].hp,
-        ammo: 3, lastReload: Date.now(),
-        cubes: 0, id: 'player'
-    };
+function spawnMatch(heroName) {
+    player = { ...HEROES[heroName], name: heroName, x: 1500, y: 1500, maxHp: HEROES[heroName].hp, ammo: 3, lastAtk: 0, cubes: 0, id: 'p' };
+    enemies = []; projectiles = []; cubes = []; ultCharge = 0;
     
-    // Спавн ботов
-    enemies = [];
-    const names = ["BrawlMaster", "Leon2014", "Pro_Killer", "Crow_God", "BullBoy", "PocoLoco", "Shelly", "Colt_S", "Primo_X"];
     for(let i=0; i<9; i++) {
-        let hKey = Object.keys(HEROES)[Math.floor(Math.random()*3)];
-        enemies.push({
-            ...HEROES[hKey],
-            nickname: names[i],
-            x: Math.random()*worldW, y: Math.random()*worldH,
-            hp: HEROES[hKey].hp, maxHp: HEROES[hKey].hp,
-            cubes: 0, id: 'bot'+i, nextAtk: 0
-        });
+        const h = Object.keys(HEROES)[Math.floor(Math.random()*3)];
+        enemies.push({ ...HEROES[h], nickname: "Bot_"+i, x: Math.random()*2800+100, y: Math.random()*2800+100, maxHp: HEROES[h].hp, ammo: 3, lastAtk: 0, cubes: 0, id: 'b'+i });
     }
-    isRunning = true;
-    requestAnimationFrame(loop);
+    
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('trophies-val').innerText = trophies[heroName];
+    isPlaying = true;
+    requestAnimationFrame(gameLoop);
 }
 
 function fire(ent, angle, isUlt) {
     if (!isUlt && ent.ammo < 1) return;
-    if (!isUlt) {
-        ent.ammo--;
-        ent.lastReload = Date.now();
-    }
+    if (!isUlt) { ent.ammo--; ent.lastAtk = Date.now(); }
+    else { ultCharge = 0; }
 
-    const speed = 15;
-    if (ent.ultType === "wide-blast" && isUlt || ent.color === "#9b59b6" && !isUlt) {
-        // Дробовик
-        for(let i=-2; i<=2; i++) {
-            projectiles.push({
-                x: ent.x, y: ent.y, 
-                vx: Math.cos(angle + i*0.2) * speed, vy: Math.sin(angle + i*0.2) * speed,
-                dmg: ent.dmg, owner: ent.id, range: isUlt ? 500 : 350, dist: 0
-            });
-        }
-    } else {
-        // Пули
+    const count = (isUlt && ent.name === "Шелли") ? 10 : 1;
+    for(let i=0; i<count; i++) {
         projectiles.push({
-            x: ent.x, y: ent.y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
-            dmg: ent.dmg, owner: ent.id, range: ent.range, dist: 0
+            x: ent.x, y: ent.y, 
+            vx: Math.cos(angle + (i-count/2)*0.1) * 15, 
+            vy: Math.sin(angle + (i-count/2)*0.1) * 15,
+            dmg: ent.dmg, range: isUlt ? ent.range*1.5 : ent.range, dist: 0, owner: ent.id
         });
     }
 }
 
 function update() {
-    if (!isRunning) return;
+    if (!isPlaying) return;
 
     // Движение
     player.x += input.move.dx * player.speed;
     player.y += input.move.dy * player.speed;
 
-    // Регенерация патронов
-    if (player.ammo < 3 && Date.now() - player.lastReload > player.reload) {
+    // Реген патронов
+    if (player.ammo < 3 && Date.now() - player.lastAtk > player.reload) {
         player.ammo++;
-        player.lastReload = Date.now();
+        player.lastAtk = Date.now();
     }
 
-    // Ульта прогресс
-    const ultEl = document.getElementById('ult-progress');
-    if (input.ult.charge >= 100) {
-        input.ult.ready = true;
-        ultEl.style.display = 'block';
-    } else {
-        ultEl.style.display = 'none';
-    }
+    // Ульта UI
+    document.getElementById('ult-val').innerText = Math.floor(ultCharge);
+    document.getElementById('ult-container').style.opacity = ultCharge >= 100 ? "1" : "0.4";
 
-    // Пули
     projectiles.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy; p.dist += Math.hypot(p.vx, p.vy);
+        p.x += p.vx; p.y += p.vy; p.dist += 15;
         if (p.dist > p.range) projectiles.splice(i, 1);
 
-        // Попадание во врагов
-        if (p.owner === 'player') {
-            enemies.forEach(en => {
-                if (Math.hypot(p.x - en.x, p.y - en.y) < 30) {
-                    en.hp -= p.dmg;
-                    input.ult.charge = Math.min(100, input.ult.charge + 5);
-                    projectiles.splice(i, 1);
-                }
-            });
-        } else {
-            if (Math.hypot(p.x - player.x, p.y - player.y) < 30) {
-                player.hp -= p.dmg;
+        const targets = p.owner === 'p' ? enemies : [player];
+        targets.forEach(t => {
+            if (Math.hypot(p.x - t.x, p.y - t.y) < 30) {
+                t.hp -= p.dmg;
+                if (p.owner === 'p') ultCharge = Math.min(100, ultCharge + 8);
                 projectiles.splice(i, 1);
             }
-        }
+        });
     });
 
     enemies.forEach((en, i) => {
-        if (en.hp <= 0) {
-            cubes.push({x: en.x, y: en.y});
-            enemies.splice(i, 1);
-        }
-        // Простая логика ботов
+        if (en.hp <= 0) { cubes.push({x:en.x, y:en.y}); enemies.splice(i, 1); }
         let d = Math.hypot(player.x - en.x, player.y - en.y);
-        if (d < 400 && Date.now() > en.nextAtk) {
+        if (d < en.range && Date.now() - en.lastAtk > en.reload) {
             fire(en, Math.atan2(player.y - en.y, player.x - en.x), false);
-            en.nextAtk = Date.now() + en.reload;
         }
     });
 
     cubes.forEach((c, i) => {
         if (Math.hypot(player.x - c.x, player.y - c.y) < 40) {
-            player.cubes++;
-            player.hp = Math.min(player.maxHp, player.hp + 500);
-            cubes.splice(i, 1);
+            player.cubes++; player.hp += 400; cubes.splice(i, 1);
         }
     });
 
-    if (player.hp <= 0) { isRunning = false; showEnd(false); }
-    if (enemies.length === 0) { isRunning = false; showEnd(true); }
+    if (player.hp <= 0) endGame(false);
+    if (enemies.length === 0) endGame(true);
 }
 
 function draw() {
-    ctx.fillStyle = "#2d5a27";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    ctx.clearRect(0,0,w,h);
     ctx.save();
-    ctx.translate(-player.x + canvas.width/2, -player.y + canvas.height/2);
+    ctx.translate(-player.x + w/2, -player.y + h/2);
 
-    // Сетка земли
-    ctx.strokeStyle = "rgba(0,0,0,0.1)";
-    for(let i=0; i<worldW; i+=100) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i, worldH); ctx.stroke(); }
-    for(let i=0; i<worldH; i+=100) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(worldW, i); ctx.stroke(); }
-
-    // Банки
-    cubes.forEach(c => {
-        ctx.fillStyle = "#f1c40f";
-        ctx.fillRect(c.x-10, c.y-10, 20, 20);
-    });
-
-    // Отрисовка персонажей
-    const drawChar = (char, isPlayer) => {
-        ctx.fillStyle = char.color;
-        ctx.beginPath(); ctx.arc(char.x, char.y, 30, 0, Math.PI*2); ctx.fill();
+    // Игрок и враги
+    const drawEntity = (e, isP) => {
+        ctx.fillStyle = e.color;
+        ctx.beginPath(); ctx.arc(e.x, e.y, 30, 0, Math.PI*2); ctx.fill();
         
         // HP Bar
-        const barW = 80;
-        ctx.fillStyle = "#000"; ctx.fillRect(char.x - barW/2, char.y - 60, barW, 12);
-        ctx.fillStyle = isPlayer ? "#2ecc71" : "#e74c3c";
-        ctx.fillRect(char.x - barW/2 + 2, char.y - 58, (char.hp/char.maxHp)*(barW-4), 8);
+        ctx.fillStyle = "#000"; ctx.fillRect(e.x-40, e.y-55, 80, 10);
+        ctx.fillStyle = isP ? "#2ecc71" : "#e74c3c";
+        ctx.fillRect(e.x-38, e.y-53, (e.hp/e.maxHp)*76, 6);
         
-        // HP Text
-        ctx.fillStyle = "#fff"; ctx.font = "bold 10px Arial"; ctx.textAlign = "center";
-        ctx.fillText(Math.ceil(char.hp), char.x, char.y - 50);
-
-        // Ник и банки
-        ctx.font = "14px Arial";
-        ctx.fillText((isPlayer ? "Вы" : char.nickname) + " [" + char.cubes + "]", char.x, char.y - 70);
-
-        // Патроны (только для игрока)
-        if (isPlayer) {
+        // Ammo (только игроку)
+        if(isP) {
             for(let i=0; i<3; i++) {
-                ctx.fillStyle = char.ammo > i ? "#e67e22" : "#555";
-                ctx.fillRect(char.x - barW/2 + (i*28), char.y - 45, 24, 4);
+                ctx.fillStyle = e.ammo > i ? "#e67e22" : "#555";
+                ctx.fillRect(e.x-38 + i*26, e.y-42, 22, 4);
             }
         }
     };
 
-    enemies.forEach(en => drawChar(en, false));
-    drawChar(player, true);
-
-    // Прицел
-    if (input.atk.active && Math.hypot(input.atk.dx, input.atk.dy) > 0.2) {
+    drawEntity(player, true);
+    enemies.forEach(en => drawEntity(en, false));
+    
+    // Прицелы
+    if (input.atk.active) {
         ctx.strokeStyle = "rgba(255,255,255,0.3)";
-        ctx.setLineDash([10, 10]);
-        ctx.beginPath();
-        ctx.moveTo(player.x, player.y);
+        ctx.beginPath(); ctx.moveTo(player.x, player.y);
         ctx.lineTo(player.x + Math.cos(input.atk.angle)*player.range, player.y + Math.sin(input.atk.angle)*player.range);
         ctx.stroke();
-        ctx.setLineDash([]);
     }
-    
-    // Прицел Ульты
-    if (input.ult.active && input.ult.ready) {
-        ctx.strokeStyle = "#f1c40f";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(player.x, player.y);
-        ctx.lineTo(player.x + Math.cos(input.ult.angle)*600, player.y + Math.sin(input.ult.angle)*600);
-        ctx.stroke();
+    if (input.ult.active && ultCharge >= 100) {
+        ctx.strokeStyle = "#f1c40f"; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(player.x, player.y);
+        ctx.lineTo(player.x + Math.cos(input.ult.angle)*player.range*1.5, player.y + Math.sin(input.ult.angle)*player.range*1.5);
+        ctx.stroke(); ctx.lineWidth = 1;
     }
 
-    // Пули
-    projectiles.forEach(p => {
-        ctx.fillStyle = "yellow";
-        ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI*2); ctx.fill();
-    });
-
+    ctx.fillStyle = "yellow";
+    projectiles.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI*2); ctx.fill(); });
     ctx.restore();
 }
 
-function loop() {
-    update();
-    draw();
-    if(isRunning) requestAnimationFrame(loop);
-}
-
-function showEnd(win) {
+function endGame(win) {
+    isPlaying = false;
+    if (win) trophies[player.name] += 8; else trophies[player.name] = Math.max(0, trophies[player.name]-4);
+    localStorage.setItem("brawl_t_v3", JSON.stringify(trophies));
     document.getElementById('end-screen').style.display = 'flex';
-    document.getElementById('end-msg').innerText = win ? "ПОБЕДА!" : "ПОРАЖЕНИЕ";
-    if(win) trophies[selectedHero]+=8;
-    localStorage.setItem("brawl_trophies", JSON.stringify(trophies));
+    document.getElementById('result-msg').innerText = win ? "ПОБЕДА +8 🏆" : "ПОРАЖЕНИЕ -4 🏆";
 }
 
-// Рендер выбора героев
-const hList = document.getElementById('hero-list');
-Object.keys(HEROES).forEach(h => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `<h3>${h}</h3><p>🏆 ${trophies[h]}</p>`;
-    card.onclick = () => startMM(h);
-    hList.appendChild(card);
-});
+function gameLoop() { update(); draw(); if(isPlaying) requestAnimationFrame(gameLoop); }
 
+Object.keys(HEROES).forEach(h => {
+    const btn = document.createElement('button');
+    btn.className = 'hero-btn';
+    btn.innerHTML = `${h}<br>🏆 ${trophies[h]}`;
+    btn.onclick = () => spawnMatch(h);
+    document.getElementById('hero-list').appendChild(btn);
+});
 </script>
 </body>
 </html>
+
